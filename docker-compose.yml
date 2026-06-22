@@ -1,0 +1,33 @@
+# One command to run the whole system:  docker compose up --build
+#
+# Five services: the two infra pieces (qdrant, redis) and three app processes
+# (api, worker, beat) that share the SAME image but run different commands.
+services:
+  qdrant:
+    image: qdrant/qdrant
+    ports: ["6333:6333"]
+
+  redis:
+    image: redis
+    ports: ["6379:6379"]
+
+  api:
+    build: .
+    ports: ["8077:8000"]
+    environment: &app_env
+      QDRANT_URL: http://qdrant:6333
+      CELERY_BROKER: redis://redis:6379/0
+      CELERY_BACKEND: redis://redis:6379/1
+    depends_on: [qdrant, redis]
+
+  worker:
+    build: .
+    command: celery -A framelock.tasks worker --loglevel=info
+    environment: *app_env          # reuse the api's env block
+    depends_on: [qdrant, redis]
+
+  beat:
+    build: .
+    command: celery -A framelock.tasks beat --loglevel=info
+    environment: *app_env
+    depends_on: [redis]
