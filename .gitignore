@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# Local data
+*.db
+*.log
+frames_debug/
+qdrant_data/
+celerybeat-schedule*
+
+# OS / editor
+.DS_Store
