@@ -12,6 +12,7 @@ venv/
 # Local data
 *.db
 *.log
+logs/
 frames_debug/
 qdrant_data/
 celerybeat-schedule*
