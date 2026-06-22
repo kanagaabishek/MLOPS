@@ -1,0 +1,24 @@
+# FrameLock dependencies
+#
+# System requirement (not pip-installable): ffmpeg + ffprobe
+#   macOS:  brew install ffmpeg
+
+# --- Phase 2: local CLIP embeddings ---
+torch
+transformers
+pillow
+
+# --- Phase 2: vector store ---
+qdrant-client
+
+# --- Phase 3: API ---
+fastapi
+uvicorn[standard]
+
+# --- Phase 4: async workers + scheduler ---
+celery[redis]
+redis
+
+# --- dev / tests ---
+pytest
+httpx          # FastAPI TestClient
