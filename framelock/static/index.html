@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FrameLock — forensic video fingerprinting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0C0A14; --bg2:#0F0C1B; --surface:#171228; --surface2:#1F1838;
+    --line:rgba(180,160,255,.12); --line2:rgba(180,160,255,.20);
+    --text:#ECE8F6; --muted:#9089AE; --dim:#6A6388;
+    --uv:#9D5BFF; --uv2:#6F7BFF; --match:#2DE0A6; --rose:#FF6B8A;
+    --glow:0 0 0 1px rgba(157,91,255,.4), 0 0 32px -6px rgba(157,91,255,.55);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Hanken Grotesk",system-ui,sans-serif; font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(900px 500px at 85% -10%, rgba(157,91,255,.10), transparent 60%),
+      radial-gradient(700px 400px at 0% 110%, rgba(111,123,255,.08), transparent 60%);
+  }
+  .mono{font-family:"JetBrains Mono",monospace}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+
+  /* ── top bar ── */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 0; border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:center; gap:11px}
+  .glyph{width:22px; height:22px; position:relative; flex:none}
+  .glyph::before,.glyph::after{content:""; position:absolute; inset:0; border-radius:5px}
+  .glyph::before{background:linear-gradient(135deg,var(--uv),var(--uv2)); box-shadow:var(--glow)}
+  .glyph::after{
+    inset:5px; border-radius:2px;
+    background:repeating-linear-gradient(0deg,#0C0A14 0 2px,transparent 2px 4px);
+    opacity:.55;
+  }
+  .brand b{font-family:"Space Grotesk"; font-weight:700; letter-spacing:.14em; font-size:15px}
+  header .tag{color:var(--dim); font-size:12.5px; letter-spacing:.04em}
+  .status{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted)}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--dim); transition:.3s}
+  .dot.on{background:var(--match); box-shadow:0 0 10px var(--match)}
+  .dot.off{background:var(--rose); box-shadow:0 0 10px var(--rose)}
+
+  /* ── hero ── */
+  .hero{padding:56px 0 40px}
+  .strip{
+    height:46px; border:1px solid var(--line); border-radius:9px; overflow:hidden;
+    position:relative; margin-bottom:34px;
+    background:repeating-linear-gradient(90deg,var(--surface) 0 38px,var(--bg2) 38px 40px);
+  }
+  .strip::before{ /* film perforations */
+    content:""; position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(90deg,transparent 0 16px,rgba(12,10,20,.9) 16px 20px) top/100% 6px no-repeat,
+      repeating-linear-gradient(90deg,transparent 0 16px,rgba(12,10,20,.9) 16px 20px) bottom/100% 6px no-repeat;
+  }
+  .scan{
+    position:absolute; top:-10%; height:120%; width:2px; left:0;
+    background:linear-gradient(var(--uv),transparent); filter:drop-shadow(0 0 8px var(--uv));
+    animation:sweep 4.2s cubic-bezier(.65,0,.35,1) infinite;
+  }
+  @keyframes sweep{0%{left:-2%}50%{left:101%}50.01%{left:101%}100%{left:-2%}}
+  .hero h1{
+    font-family:"Space Grotesk"; font-weight:700; font-size:clamp(34px,5vw,54px);
+    line-height:1.04; letter-spacing:-.02em; margin:0 0 16px; max-width:14ch;
+  }
+  .hero h1 em{font-style:normal; color:transparent; background:linear-gradient(100deg,var(--uv),var(--uv2)); -webkit-background-clip:text; background-clip:text}
+  .hero p{max-width:54ch; color:var(--muted); font-size:16.5px; margin:0}
+
+  .eyebrow{font-family:"JetBrains Mono"; font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--uv); margin:0 0 16px}
+
+  /* ── console ── */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px}
+  .card{
+    background:linear-gradient(180deg,var(--surface),var(--bg2));
+    border:1px solid var(--line); border-radius:14px; padding:22px;
+  }
+  .card h2{font-family:"Space Grotesk"; font-weight:600; font-size:15px; letter-spacing:.02em; margin:0 0 4px}
+  .card .sub{color:var(--dim); font-size:12.5px; margin:0 0 18px}
+  label{display:block; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin:0 0 7px}
+  input{
+    width:100%; background:#0A0813; border:1px solid var(--line2); border-radius:9px;
+    color:var(--text); font-family:"JetBrains Mono"; font-size:13px; padding:11px 13px; margin-bottom:15px;
+    transition:.15s;
+  }
+  input:focus{outline:none; border-color:var(--uv); box-shadow:0 0 0 3px rgba(157,91,255,.18)}
+  input::placeholder{color:#4D4769}
+  button{
+    font-family:"Space Grotesk"; font-weight:600; font-size:13.5px; letter-spacing:.02em;
+    border:none; border-radius:9px; padding:12px 18px; cursor:pointer; transition:.15s; color:#fff;
+    display:inline-flex; align-items:center; gap:9px;
+  }
+  .btn-primary{background:linear-gradient(135deg,var(--uv),var(--uv2)); box-shadow:var(--glow); width:100%; justify-content:center}
+  .btn-ghost{background:transparent; border:1px solid var(--line2); color:var(--text); width:100%; justify-content:center}
+  button:hover{filter:brightness(1.08)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.5; cursor:wait}
+  .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .hint{font-size:11.5px;color:var(--dim);margin:-6px 0 0}
+  .hint a{color:var(--uv2);cursor:pointer;text-decoration:none;border-bottom:1px dotted}
+
+  /* ── result ── */
+  .result{
+    border:1px solid var(--line); border-radius:14px; padding:0; overflow:hidden;
+    margin-bottom:18px; background:var(--bg2); min-height:120px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .result.empty{color:var(--dim); font-size:13.5px; padding:34px}
+  .verdict{width:100%}
+  .vhead{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:22px 24px; border-bottom:1px solid var(--line)}
+  .badge{font-family:"Space Grotesk"; font-weight:700; font-size:19px; letter-spacing:.01em; display:flex; align-items:center; gap:12px}
+  .badge .led{width:11px;height:11px;border-radius:50%}
+  .hit .led{background:var(--match); box-shadow:0 0 14px var(--match)}
+  .miss .led{background:var(--rose); box-shadow:0 0 14px var(--rose)}
+  .hit .badge{color:var(--match)} .miss .badge{color:var(--rose)}
+  .work{font-family:"JetBrains Mono"; font-size:13px; color:var(--muted); margin-top:4px}
+  .metrics{display:flex; gap:26px; text-align:right}
+  .metric .k{font-family:"JetBrains Mono"; font-size:23px; font-weight:600; color:var(--text)}
+  .metric .l{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim)}
+  .align{padding:18px 24px 26px}
+  .align .cap{font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim); margin-bottom:6px}
+  svg{display:block; width:100%; overflow:visible}
+
+  /* ── activity ── */
+  .activity h3{font-family:"JetBrains Mono"; font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted); margin:26px 0 12px}
+  .feed{display:flex; flex-direction:column; gap:8px}
+  .row{
+    display:flex; align-items:center; gap:14px; padding:12px 16px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px; font-size:13px;
+  }
+  .row .op{font-family:"Space Grotesk"; font-weight:600; min-width:62px}
+  .row .jid{font-family:"JetBrains Mono"; font-size:12px; color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .chip{font-family:"JetBrains Mono"; font-size:11px; letter-spacing:.06em; padding:4px 10px; border-radius:999px; display:flex; align-items:center; gap:7px}
+  .chip.run{color:var(--uv);background:rgba(157,91,255,.12)}
+  .chip.ok{color:var(--match);background:rgba(45,224,166,.12)}
+  .chip.no{color:var(--rose);background:rgba(255,107,138,.12)}
+  .chip.err{color:#FFB454;background:rgba(255,180,84,.12)}
+  .pulse{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pp 1.1s ease-in-out infinite}
+  @keyframes pp{0%,100%{opacity:.35}50%{opacity:1}}
+  footer{color:var(--dim); font-size:12px; text-align:center; padding:40px 0 30px}
+  footer .mono{color:var(--muted)}
+
+  @media(max-width:720px){ .grid{grid-template-columns:1fr} .metrics{gap:18px} .hero{padding:36px 0 28px} }
+  @media(prefers-reduced-motion:reduce){ .scan{animation:none; opacity:.4} .pulse{animation:none} .spin{animation-duration:2s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <span class="glyph"></span>
+      <b>FRAMELOCK</b>
+      <span class="tag">forensic video fingerprinting</span>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></div>
+  </header>
+
+  <section class="hero">
+    <div class="strip"><div class="scan"></div></div>
+    <p class="eyebrow">register · fingerprint · detect</p>
+    <h1>Find your footage <em>anywhere.</em></h1>
+    <p>Register what you own. FrameLock fingerprints it without storing a single frame, then flags re-uploads by how they <em>look</em> — not their bytes. Cropped, re-encoded, watermarked: still caught.</p>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Register a work</h2>
+      <p class="sub">Add content you own to the catalog.</p>
+      <label for="rid">Work id</label>
+      <input id="rid" class="mono" placeholder="big-buck-bunny" />
+      <label for="rurl">Video URL</label>
+      <input id="rurl" class="mono" placeholder="https://…/video.mp4" />
+      <button class="btn-ghost" id="regBtn" onclick="register()">Register work</button>
+      <p class="hint" style="margin-top:12px"><a onclick="fillExample()">Fill the Big Buck Bunny example →</a></p>
+    </div>
+
+    <div class="card">
+      <h2>Run a detection</h2>
+      <p class="sub">Scan a URL against the catalog.</p>
+      <label for="durl">Video URL</label>
+      <input id="durl" class="mono" placeholder="https://…/suspect.mp4" />
+      <button class="btn-primary" id="detBtn" onclick="runDetect()">
+        <span id="detLabel">Scan for matches</span>
+      </button>
+      <p class="hint" style="margin-top:12px">Detection runs in a worker — you'll see it move through <b>queued → scanning → result</b> below.</p>
+    </div>
+  </section>
+
+  <section class="result empty" id="result">Run a detection to see the verdict and the timeline alignment.</section>
+
+  <section class="activity">
+    <h3>Activity</h3>
+    <div class="feed" id="feed"><div class="row"><span class="jid">No jobs yet.</span></div></div>
+  </section>
+
+  <footer>FrameLock · zero-download fingerprinting · <span class="mono">CLIP → Qdrant → vote</span></footer>
+</div>
+
+<script>
+const API = "";
+const $ = id => document.getElementById(id);
+
+/* ── health ── */
+async function health(){
+  try{ const r = await fetch(API+"/health"); if(!r.ok) throw 0;
+    $("dot").className="dot on"; $("statusText").textContent="engine online";
+  }catch{ $("dot").className="dot off"; $("statusText").textContent="engine offline"; }
+}
+health(); setInterval(health, 8000);
+
+function fillExample(){
+  const u="https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4";
+  $("rid").value="big-buck-bunny"; $("rurl").value=u; $("durl").value=u;
+}
+
+/* ── activity feed ── */
+let feedItems=[]; let firstJob=true;
+function addRow(op,jobId){
+  if(firstJob){ $("feed").innerHTML=""; firstJob=false; }
+  const el=document.createElement("div"); el.className="row";
+  el.innerHTML=`<span class="op">${op}</span><span class="jid">job ${jobId}</span><span class="chip run"><span class="pulse"></span>queued</span>`;
+  $("feed").prepend(el);
+  return el;
+}
+function setChip(row,cls,text){ row.querySelector(".chip").className="chip "+cls;
+  row.querySelector(".chip").innerHTML = (cls==="run"?'<span class="pulse"></span>':'')+text; }
+
+/* ── poll a celery job ── */
+function pollJob(jobId,{onState,onDone,onFail}){
+  const t=setInterval(async()=>{
+    try{
+      const r=await fetch(API+`/jobs/${jobId}`); const d=await r.json();
+      onState && onState(d.state);
+      if(d.state==="SUCCESS"){ clearInterval(t); onDone(d.result); }
+      else if(d.state==="FAILURE"){ clearInterval(t); onFail(d.error||"job failed"); }
+    }catch{ clearInterval(t); onFail("lost connection to engine"); }
+  }, 1500);
+}
+
+/* ── register ── */
+async function register(){
+  const work_id=$("rid").value.trim(), url=$("rurl").value.trim();
+  if(!work_id||!url) return flash($("regBtn"),"Add an id and a URL");
+  const btn=$("regBtn"); btn.disabled=true; btn.textContent="Registering…";
+  try{
+    const r=await fetch(API+"/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({work_id,url})});
+    const {job_id}=await r.json(); const row=addRow("register",short(job_id));
+    pollJob(job_id,{
+      onState:s=>{ if(s==="STARTED") setChip(row,"run","fingerprinting"); },
+      onDone:res=>{ setChip(row,"ok",`+${res.frames_registered} frames`); btn.disabled=false; btn.textContent="Register work"; },
+      onFail:e=>{ setChip(row,"err","failed"); btn.disabled=false; btn.textContent="Register work"; }
+    });
+  }catch{ btn.disabled=false; btn.textContent="Register work"; flash(btn,"Engine unreachable"); }
+}
+
+/* ── detect ── */
+async function runDetect(){
+  const url=$("durl").value.trim();
+  if(!url) return flash($("detBtn"),"Paste a URL");
+  const btn=$("detBtn"); btn.disabled=true; $("detLabel").innerHTML='<span class="spin"></span>';
+  try{
+    const r=await fetch(API+"/detect",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({url})});
+    const {job_id}=await r.json(); const row=addRow("detect",short(job_id));
+    pollJob(job_id,{
+      onState:s=>{ if(s==="STARTED") setChip(row,"run","scanning"); },
+      onDone:res=>{ renderVerdict(res);
+        if(res.detected) setChip(row,"ok",`${res.best_match.work_id}`);
+        else setChip(row,"no","no match");
+        resetDet(btn);
+      },
+      onFail:e=>{ setChip(row,"err","failed"); renderError(e); resetDet(btn); }
+    });
+  }catch{ resetDet(btn); flash(btn,"Engine unreachable"); }
+}
+function resetDet(btn){ btn.disabled=false; $("detLabel").textContent="Scan for matches"; }
+
+/* ── verdict render ── */
+function renderVerdict(res){
+  const R=$("result"); R.classList.remove("empty");
+  if(!res.detected){
+    R.innerHTML=`<div class="verdict miss"><div class="vhead">
+      <div><div class="badge"><span class="led"></span>No match</div>
+      <div class="work">nothing in the catalog crossed the confidence threshold</div></div></div></div>`;
+    return;
+  }
+  const b=res.best_match;
+  R.innerHTML=`<div class="verdict hit">
+    <div class="vhead">
+      <div><div class="badge"><span class="led"></span>Copy detected</div>
+      <div class="work">${b.work_id} · ${b.matched_frames}/${b.total_frames} frames matched</div></div>
+      <div class="metrics">
+        <div class="metric"><div class="k">${Math.round(b.coverage*100)}%</div><div class="l">coverage</div></div>
+        <div class="metric"><div class="k">${b.avg_score.toFixed(3)}</div><div class="l">avg score</div></div>
+      </div>
+    </div>
+    <div class="align"><div class="cap">timeline alignment · suspect → original</div>${timelineSVG(b.segments,res.candidate_duration)}</div>
+  </div>`;
+}
+function renderError(msg){
+  const R=$("result"); R.classList.remove("empty");
+  R.innerHTML=`<div class="verdict miss"><div class="vhead"><div>
+    <div class="badge" style="color:#FFB454"><span class="led" style="background:#FFB454;box-shadow:0 0 14px #FFB454"></span>Scan failed</div>
+    <div class="work">${esc(msg).slice(0,160)}</div></div></div></div>`;
+}
+
+/* ── the signature: dual-timeline alignment ── */
+function timelineSVG(segs,candDur){
+  const W=1000,H=150,padX=14,topY=42,botY=120;
+  const candMax=Math.max(candDur||1, ...segs.map(s=>s.candidate_t),1);
+  const workMax=Math.max(...segs.map(s=>s.work_t),1)*1.08;
+  const X=(t,max)=>padX + (t/max)*(W-2*padX);
+  let lines="",nodes="",ticks="";
+  for(const s of segs){
+    const x1=X(s.candidate_t,candMax), x2=X(s.work_t,workMax);
+    lines+=`<path d="M ${x1} ${topY} C ${x1} ${(topY+botY)/2}, ${x2} ${(topY+botY)/2}, ${x2} ${botY}" stroke="url(#g)" stroke-width="1.5" fill="none" opacity=".7"/>`;
+    nodes+=`<circle cx="${x1}" cy="${topY}" r="4.5" fill="#2DE0A6"/><circle cx="${x2}" cy="${botY}" r="4.5" fill="#9D5BFF"/>`;
+    nodes+=`<text x="${x1}" y="${topY-12}" class="tc" text-anchor="middle">${fmt(s.candidate_t)}</text>`;
+    nodes+=`<text x="${x2}" y="${botY+22}" class="tc" text-anchor="middle">${fmt(s.work_t)}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="matched timecodes">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2DE0A6"/><stop offset="1" stop-color="#9D5BFF"/></linearGradient></defs>
+    <style>.tc{font-family:'JetBrains Mono';font-size:13px;fill:#9089AE}.lab{font-family:'JetBrains Mono';font-size:12px;fill:#6A6388;letter-spacing:.12em}</style>
+    <line x1="${padX}" y1="${topY}" x2="${W-padX}" y2="${topY}" stroke="rgba(45,224,166,.25)" stroke-width="1.5"/>
+    <line x1="${padX}" y1="${botY}" x2="${W-padX}" y2="${botY}" stroke="rgba(157,91,255,.25)" stroke-width="1.5"/>
+    <text x="${padX}" y="${topY-22}" class="lab">SUSPECT</text>
+    <text x="${padX}" y="${botY+38}" class="lab">ORIGINAL</text>
+    ${lines}${nodes}
+  </svg>`;
+}
+function fmt(s){ const m=Math.floor(s/60), ss=Math.floor(s%60); return `${m}:${String(ss).padStart(2,"0")}`; }
+function short(id){ return id.slice(0,8)+"…"; }
+function esc(s){ return (s||"").replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c])); }
+let flashT;
+function flash(btn,msg){ const o=btn.textContent; btn.textContent=msg; clearTimeout(flashT);
+  flashT=setTimeout(()=>{ if(btn.id==="detBtn"){$("detLabel").textContent="Scan for matches";} else btn.textContent=o; },1600); }
+</script>
+</body>
+</html>
