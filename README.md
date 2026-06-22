@@ -37,6 +37,7 @@ real time (YouTube WebSub) or on a schedule (Celery Beat).
 | Component | File | Role |
 |---|---|---|
 | Contract | `framelock/schema.py` | `Fingerprint` / `FrameSignature` |
+| Resolver | `framelock/resolver.py` | YouTube watch URL → direct media stream (yt-dlp) |
 | Extractor | `framelock/extractor.py` | keyframes from a URL, no download |
 | Embedder | `framelock/embedder/` | `Embedder` port + `ClipEmbedder` (Gemini-swappable) |
 | Fingerprinter | `framelock/fingerprinter.py` | extract → embed → `Fingerprint` |
@@ -97,11 +98,14 @@ interface — true multimodal image embeddings — by implementing `Embedder`.
 ## What's real vs. what's a known boundary
 
 - ✅ Real: zero-download extraction, embeddings, Qdrant search, voting verdict,
-  async pipeline, scheduled scans, the WebSub protocol (handshake + parse + enqueue).
-- ⚠️ For *live* YouTube: the callback must be publicly reachable (e.g. `ngrok`),
-  and a `watch?v=…` URL must be resolved to a media stream (YouTube Data API /
-  yt-dlp) before the extractor can fingerprint it. The engine works today on any
-  direct media URL.
+  async pipeline, scheduled scans, the WebSub protocol (handshake + parse + enqueue),
+  and **YouTube `watch?v=…` ingestion** via `resolver.py` (yt-dlp resolves the page
+  to a direct, range-seekable stream — still zero-download).
+- ⚠️ For *live* webhook delivery the callback must be publicly reachable (e.g.
+  `ngrok`). YouTube also actively fights automated access: stream resolution can
+  break (PO-token / anti-bot changes), so the resolver uses mobile/tv player
+  clients and may need updating over time. The engine always works on any direct
+  media URL.
 
 ## License
 

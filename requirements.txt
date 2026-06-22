@@ -19,6 +19,9 @@ uvicorn[standard]
 celery[redis]
 redis
 
+# --- Phase 5: YouTube stream resolution (watch URL -> direct media URL) ---
+yt-dlp
+
 # --- dev / tests ---
 pytest
 httpx          # FastAPI TestClient

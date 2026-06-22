@@ -32,12 +32,33 @@ class ExtractedFrame:
     jpeg_bytes: bytes       # the decoded frame, JPEG-encoded, in RAM
 
 
-def probe_duration(url: str, timeout: float = 30.0) -> float:
+def _header_args(headers: dict | None) -> list[str]:
+    """Build FFmpeg/ffprobe input flags that replay HTTP headers.
+
+    Some CDNs (e.g. YouTube's googlevideo) reject requests whose User-Agent
+    doesn't match the client that minted the signed URL — returning 403. We
+    replay the headers yt-dlp used so the byte-range requests are accepted.
+    These are INPUT options, so they must appear before -i / the URL.
+    """
+    if not headers:
+        return []
+    args: list[str] = []
+    ua = headers.get("User-Agent")
+    if ua:
+        args += ["-user_agent", ua]
+    rest = "".join(f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() != "user-agent")
+    if rest:
+        args += ["-headers", rest]
+    return args
+
+
+def probe_duration(url: str, timeout: float = 30.0, headers: dict | None = None) -> float:
     """Ask ffprobe how long the video is — reads only the index, not the video."""
     result = subprocess.run(
         [
             "ffprobe",
             "-v", "error",                     # silence everything except real errors
+            *_header_args(headers),            # replay CDN-required headers (before input)
             "-show_entries", "format=duration", # we only want the duration field
             "-of", "csv=p=0",                  # print just the value, no labels
             url,
@@ -51,13 +72,14 @@ def probe_duration(url: str, timeout: float = 30.0) -> float:
     return float(result.stdout.strip())
 
 
-def _grab_frame(url: str, timestamp: float, timeout: float = 30.0) -> bytes:
+def _grab_frame(url: str, timestamp: float, timeout: float = 30.0, headers: dict | None = None) -> bytes:
     """Decode the single keyframe at/just-before `timestamp` into JPEG bytes."""
     result = subprocess.run(
         [
             "ffmpeg",
             "-nostdin",                 # never wait for keyboard input (safe in scripts)
             "-loglevel", "error",       # keep stderr quiet unless something breaks
+            *_header_args(headers),     # replay CDN-required headers (input options)
             "-ss", str(timestamp),      # SEEK on input -> Range request, the zero-download path
             "-i", url,                  # ...and -ss is BEFORE -i, so the seek is cheap
             "-frames:v", "1",           # decode exactly one video frame, then stop
@@ -79,6 +101,7 @@ def extract_frames(
     url: str,
     interval: float = 2.0,
     max_frames: int | None = None,
+    headers: dict | None = None,
 ):
     """
     Yield ExtractedFrame samples taken every `interval` seconds.
@@ -90,13 +113,14 @@ def extract_frames(
         url:        http(s) URL of the video (must support Range requests).
         interval:   seconds between samples. Bigger = sparser = fewer reads.
         max_frames: stop after this many good frames (handy for quick tests).
+        headers:    optional HTTP headers to replay (e.g. YouTube's User-Agent).
     """
-    duration = probe_duration(url)
+    duration = probe_duration(url, headers=headers)
 
     count = 0
     t = 0.0
     while t < duration:
-        jpeg = _grab_frame(url, t)
+        jpeg = _grab_frame(url, t, headers=headers)
 
         # Filter the low-information frames we learned about (the black-frame trap).
         if len(jpeg) >= MIN_FRAME_BYTES:

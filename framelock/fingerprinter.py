@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from .embedder.base import Embedder
 from .extractor import extract_frames, probe_duration
+from .resolver import resolve_stream_url
 from .schema import Fingerprint, FrameSignature
 
 
@@ -43,10 +44,16 @@ def fingerprint(
     Returns:
         A Fingerprint with one FrameSignature per sampled frame.
     """
-    duration = probe_duration(url)
+    # Resolve a page URL (e.g. a YouTube watch link) to a direct, seekable media
+    # URL ONCE; direct media URLs pass through unchanged. We then feed the
+    # resolved URL to both probe + extract, but STORE the original `url` as the
+    # canonical pointer (the resolved one is temporary/signed).
+    media_url, headers = resolve_stream_url(url)
+
+    duration = probe_duration(media_url, headers=headers)
 
     signatures: list[FrameSignature] = []
-    for frame in extract_frames(url, interval=interval, max_frames=max_frames):
+    for frame in extract_frames(media_url, interval=interval, max_frames=max_frames, headers=headers):
         vector = embedder.embed_image(frame.jpeg_bytes)
         signatures.append(
             FrameSignature(timestamp=frame.timestamp, embedding=vector)
